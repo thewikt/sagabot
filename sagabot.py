@@ -6,67 +6,16 @@ import asyncio
 from discord.ext import commands
 from bs4 import BeautifulSoup
 from scipy.stats import norm
-import sqlite3
+from sagabot_db import *
 import re
 
 client = commands.Bot(command_prefix="!", description="Show me your power level!")
 thisroles={}
+tiers = dict(zip([(i*5, i*5+4) for i in range(30)], [str(i*5)+"-"+str(i*5+4) for i in range(30)]))
+tiers[(150, 154)]='150'
 #variables for !mal
 middle = norm(5, 2).pdf(5)
 factor=60./13.
-
-def dbconnect():
-    try:
-        conn = sqlite3.connect("malbot.db")
-        return conn
-    except Error as e:
-        print(e)
-    return None
-
-def selectbyname(conn, name):
-    sql = "select * from profiles where mal_name = ?"
-    c = conn.cursor()
-    c.execute(sql, (name,))
-    return c.fetchall()
-
-def selectuser(conn, id_):
-    sql = "select * from profiles where id = ?"
-    c = conn.cursor()
-    c.execute(sql, (id_,))
-    return c.fetchall()
-
-def insertuser(conn, vals):
-    sql = "insert into profiles (id, mal_name, tier, level) values (?, ?, ?, ?)"
-    c = conn.cursor()
-    c.execute(sql, vals)
-    return c.lastrowid
-
-def updateuser(conn, vals):
-    sql = "update profiles set mal_name = ?, tier = ?, level = ? where id = ?" #(mal_name, tier, level, id)
-    c = conn.cursor()
-    c.execute(sql, vals)
-    return c.lastrowid
-
-def insertstats(conn, vals):
-    sql = '''insert into stats (id, days, completed, meanscore)
-    values (?, ?, ?, ?)'''
-    c = conn.cursor()
-    c.execute(sql, vals)
-    return c.lastrowid
-
-def selectstats(conn, id_):
-    sql="select profiles.id, profiles.mal_name, profiles.level, stats.days, stats.completed, stats.meanscore from profiles left join stats where profiles.id = stats.id and profiles.id = ?"
-    c = conn.cursor()
-    c.execute(sql, (id_,))
-    return c.fetchall()
-
-def updatestats(conn, vals):
-    sql = '''update stats
-    set days = ?, completed = ?, meanscore = ?
-    where id = ?'''
-    c = conn.cursor()
-    c.execute(sql, vals)
-    return c.lastrowid
 
 #@client.command()
 #async def help():
@@ -124,6 +73,7 @@ async def malcheck(username_in : str):
         if not user:
             #get it from MAL
             print("malcheck: User not in DB. Getting from MAL")
+            #TBD: update request to use aiohttp
             soup=BeautifulSoup(requests.get("https://myanimelist.net/profile/"+username).text, 'html.parser')
 
             try:
@@ -140,14 +90,21 @@ async def malcheck(username_in : str):
 
             score_factor = norm(5, 2).pdf(meanscore_number) / middle
 
-            powerlevel = int(round(days_number * completed_number * factor * score_factor, 0))
-            await client.say("Konto MAL: "+username+"\nCompleted: "+completed+"\nDays: "+days+"\nMean score: "+meanscore+"\nPower level: "+str(powerlevel))
+            xp = int(round(days_number * completed_number * factor * score_factor, 0))
+            level = getlevel(conn, xp)[0][0]
+
+            await client.say("Konto MAL: "+username+ \
+            "\nCompleted: "+str(int(completed))+ \
+            "\nDays: "+str(days)+ \
+            "\nMean score: "+str(meanscore)+ \
+            "\nLevel: "+str(level)+ \
+            "\nXP: "+str(xp))
         else:
             print("malcheck: found user. Getting stats from DB.")
             id_=user[0][0]
             stats = selectstats(conn, id_)
             try:
-                username, powerlevel, days, completed, meanscore = stats[0][1:]
+                username, xp, level, days, completed, meanscore = stats[0][1:]
             except IndexError:
                 print("malcheck: Failed to retrieve stats for ID "+str(id_))
                 await client.say("Profil MAL jest w bazie, ale nie ma statystyk. Właściciel powinien użyć polecenia !mal.")
@@ -156,7 +113,8 @@ async def malcheck(username_in : str):
             "\nCompleted: "+str(completed)+ \
             "\nDays: "+str(days)+ \
             "\nMean score: "+str(meanscore)+ \
-            "\nPower level: "+str(powerlevel))
+            "\nLevel: "+str(level)+ \
+            "\nXP: "+str(xp))
             print(stats)
 
 
@@ -172,8 +130,12 @@ async def mal(ctx):
             return
         else:
             username = user[0][1]
-            tier_old = user[0][2]
+            xp_old = user[0][2]
             level_old = user[0][3]
+
+            if not xp_old: xp_old = 0
+            if not level_old: level_old = 0
+    #TBD: EXPORT THIS TO FUNCTION V
     soup=BeautifulSoup(requests.get("https://myanimelist.net/profile/"+username).text, 'html.parser')
 
     try:
@@ -190,38 +152,56 @@ async def mal(ctx):
 
     score_factor = norm(5, 2).pdf(meanscore_number) / middle
 
-    powerlevel = int(round(days_number * completed_number * factor * score_factor, 0))
-    tier_new=''
-
-    if powerlevel == level_old:
-        print("mal: No change for "+ctx.message.author.name)
-    #S-tier
-    elif powerlevel > 1000000 :
-        print("mal: S-tier for "+ctx.message.author.name)
-        tier_new = 'S-tier'
-        await client.say(ctx.message.author.name+" kwalifikuje się do S-tier!")
-        await client.remove_roles(ctx.message.author, thisroles['A-tier'], thisroles['B-tier'])
-        await client.add_roles(ctx.message.author, thisroles['S-tier'])
-    #A-tier
-    elif powerlevel > 100000 and powerlevel <= 1000000 :
-        print("mal: A-tier for "+ctx.message.author.name)
-        tier_new = 'A-tier'
-        await client.say(ctx.message.author.name+" kwalifikuje się do A-tier!")
-        await client.remove_roles(ctx.message.author, thisroles['S-tier'], thisroles['B-tier'])
-        await client.add_roles(ctx.message.author, thisroles['A-tier'])
-    #B-tier
-    else:
-        print("mal: B-tier for "+ctx.message.author.name)
-        tier_new = 'B-tier'
-        await client.say(ctx.message.author.name+" kwalifikuje się do B-tier!")
-        await client.remove_roles(ctx.message.author, thisroles['A-tier'], thisroles['S-tier'])
-        await client.add_roles(ctx.message.author, thisroles['B-tier'])
-    #await client.add_roles(ctx.message.author, thisroles['under 9k'])
-
-    conn = dbconnect()
+    xp = int(round(days_number * completed_number * factor * score_factor, 0))
     with conn:
-        if powerlevel != level_old or tier_new:
-            updateuser(conn, (username, tier_new, powerlevel, int(ctx.message.author.id)))
+        lvrow = getlevel(conn, xp)
+        level = lvrow[0][0]
+        maxxp = lvrow[0][2]
+
+    if not xp_old:
+        print("mal: New evaluation")
+    elif xp == xp_old:
+        print("mal: No change for "+ctx.message.author.name)
+    elif xp > xp_old:
+        increase = xp - xp_old
+        remaining = maxxp - xp
+        print("mal: "+ctx.message.author.name+" gained "+str(increase)+" XP, "+str(remaining)+" left to next level")
+        await client.say(ctx.message.author.name+" zyskał "+str(increase)+" XP, pozostało "+str(remaining)+" do następnego poziomu")
+    else:
+        decrease = xp_old - xp
+        remaining = maxxp - xp
+        print("mal: "+ctx.message.author.name+" lost "+str(decrease)+" XP, "+str(remaining)+" left to next level")
+        await client.say(ctx.message.author.name+" stracił "+str(decrease)+" XP, pozostało "+str(remaining)+" do następnego poziomu")
+
+    if level > level_old:
+        print("mal: "+ctx.message.author.name+" leveled up!")
+        await client.say("**Level up!** "+ctx.message.author.name+" ma teraz level "+str(level))
+    elif level < level_old:
+        print("mal: "+ctx.message.author.name+" leveled down.")
+        await client.say("Level down. "+ctx.message.author.name+" ma teraz level "+str(level))
+
+    tiermin = level - (level % 5)
+    tiermax = tiermin + 4
+    if level > 150:
+        tier = tiers[(150, 154)]
+    else:
+        tier = tiers[(tiermin, tiermax)]
+    print("mal: "+ctx.message.author.name+" should be in tier "+tier)
+    targetrole = thisroles[tier]
+    otherroles=[i for i in ctx.message.author.roles if i.name != tier and i.name in tiers.values()]
+    if (targetrole.name not in [i.name for i in ctx.message.author.roles]) or otherroles:
+        print("mal: changing roles")
+        await client.remove_roles(ctx.message.author, *otherroles)
+        await asyncio.sleep(1)
+        await client.add_roles(ctx.message.author, targetrole)
+        print("mal: removed "+str([i.name for i in otherroles])+", added "+targetrole.name)
+    else:
+        print("mal: appropriate tier found, no other tiers found")
+
+    #conn = dbconnect()
+    with conn:
+        if xp != xp_old:
+            updateuser(conn, (username, xp, level, int(ctx.message.author.id)))
             print("mal: Updated user "+username+" "+ctx.message.author.id)
         print("mal: Updating stats")
         stats = selectstats(conn, int(ctx.message.author.id))
@@ -231,7 +211,13 @@ async def mal(ctx):
         else:
             updatestats(conn, (days_number, completed_number, meanscore_number, int(ctx.message.author.id)))
             print("mal: Stats updated")
-    await client.say("Konto MAL: "+username+"\nCompleted: "+completed+"\nDays: "+days+"\nMean score: "+meanscore+"\nPower level: "+str(powerlevel))
+
+    await client.say("Konto MAL: "+username+ \
+    "\nCompleted: "+completed+ \
+    "\nDays: "+days+ \
+    "\nMean score: "+meanscore+ \
+    "\nLevel: "+str(level)+ \
+    "\nXP: "+str(xp))
 
 
 @client.command(description="Wyszukuje na MALu i zwraca pierwszy wynik - serię anime.")
