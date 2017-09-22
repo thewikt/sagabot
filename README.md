@@ -9,6 +9,7 @@ Obliczanie odbywa się na podstawie **Completed**, czyli skończonych bajek i **
 ## Wzór
 
 Poniżej techniczne szczegóły dla zainteresowanych tym, jak bot właściwie liczy XP i level. 
+
 XP jest liczone według poniższego wzoru:
 
 ```
@@ -27,7 +28,10 @@ Poziom wyliczany jest na podstawie ramek XP, które podane są w pliku `levels.c
 ## Polecenia
 
 `!malbind <nazwa profilu MAL>` - przypisuje użytkownikowi Discord podany profil na MAL. 
+
 `!mal` - dla przypisanego użytkownikowi profilu wylicza XP oraz level i przypisuję rolę na serwerze zależnie od levela. 
+
 `!malcheck <nazwa profilu MAL>` - dla podanej nazwy profilu zwraca statystyki takie, jak `!mal`. Działa także na nieprzypisanych profilach - dla przypisanych już profilów pobiera statystyki z bazy danych, nie z MALa. 
+
 `!malfind <zapytanie>` - znajduje bajkę na MALu i podaje informacje o niej oraz link do wpisu na MALu. 
 
