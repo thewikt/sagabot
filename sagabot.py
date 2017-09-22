@@ -7,15 +7,17 @@ from discord.ext import commands
 from bs4 import BeautifulSoup
 from scipy.stats import norm
 from sagabot_db import *
+from difflib import SequenceMatcher
 import re
 
 client = commands.Bot(command_prefix="!", description="Show me your power level!")
 thisroles={}
-tiers = dict(zip([(i*5, i*5+4) for i in range(30)], [str(i*5)+"-"+str(i*5+4) for i in range(30)]))
-tiers[(150, 154)]='150'
+tiers = dict(zip([(i*5, i*5+4) for i in range(22)], '[E-],[E],[E+],[D-],[D],[D+],[C-],[C],[C+],[B-],[B],[B+],[A-],[A],[A+],[S-],[S],[S+],[SS-],[SS],[SS+],[SSS]'.split(',')))
+tiers[(110, 114)]='EX'
 #variables for !mal
 middle = norm(5, 2).pdf(5)
 factor=60./13.
+lock = asyncio.Lock()
 
 #@client.command()
 #async def help():
@@ -30,7 +32,7 @@ factor=60./13.
 @client.command(pass_context=True, description="Wiąże z twoim Discordem podane konto na MAL.")
 async def malbind(ctx, username_in : str):
     username = username_in.lower()
-    if not re.match("^[a-z0-9_]*$", username):
+    if not re.match("^[a-z0-9_-]*$", username):
         print("mal: Malformed MAL username")
         await client.say("Nieprawidłowy format nazwy profilu.")
         return
@@ -62,7 +64,7 @@ async def malbind(ctx, username_in : str):
 @client.command(description = "Dla użytkownika pokazuje statystyki i powerlevel. Działa także dla niepowiązanych kont.")
 async def malcheck(username_in : str):
     username=username_in.lower()
-    if not re.match("^[a-z0-9_]*$", username):
+    if not re.match("^[a-z0-9_-]*$", username):
         print("malcheck: Malformed MAL username: "+username_in)
         await client.say("Nieprawidłowy format nazwy profilu.")
         return
@@ -91,12 +93,12 @@ async def malcheck(username_in : str):
             score_factor = norm(5, 2).pdf(meanscore_number) / middle
 
             xp = int(round(days_number * completed_number * factor * score_factor, 0))
-            level = getlevel(conn, xp)[0][0]
+            level = (getlevel(conn, xp)[0][0])
 
             await client.say("Konto MAL: "+username+ \
-            "\nCompleted: "+str(int(completed))+ \
-            "\nDays: "+str(days)+ \
-            "\nMean score: "+str(meanscore)+ \
+            "\nCompleted: "+completed+ \
+            "\nDays: "+days+ \
+            "\nMean score: "+meanscore+ \
             "\nLevel: "+str(level)+ \
             "\nXP: "+str(xp))
         else:
@@ -115,15 +117,16 @@ async def malcheck(username_in : str):
             "\nMean score: "+str(meanscore)+ \
             "\nLevel: "+str(level)+ \
             "\nXP: "+str(xp))
-            print(stats)
 
 
 @client.command(pass_context=True, description="Dla związanego z twoim Discordem konta wylicza powerlevel i nadaje rangę.")
 async def mal(ctx):
     conn = dbconnect()
+
     with conn:
         print("mal: Selecting ID "+ctx.message.author.id)
-        user = selectuser(conn, int(ctx.message.author.id))
+        with (await lock):
+            user = selectuser(conn, int(ctx.message.author.id))
         if not user:
             print("mal: ID "+ctx.message.author.id+" not bound")
             await client.say("Nie masz zbindowanego konta. Użyj !malbind username")
@@ -180,11 +183,12 @@ async def mal(ctx):
         print("mal: "+ctx.message.author.name+" leveled down.")
         await client.say("Level down. "+ctx.message.author.name+" ma teraz level "+str(level))
 
-    tiermin = level - (level % 5)
-    tiermax = tiermin + 4
-    if level > 150:
-        tier = tiers[(150, 154)]
+
+    if level > 110:
+        tier = tiers[(110, 114)]
     else:
+        tiermin = level - (level % 5)
+        tiermax = tiermin + 4
         tier = tiers[(tiermin, tiermax)]
     print("mal: "+ctx.message.author.name+" should be in tier "+tier)
     targetrole = thisroles[tier]
@@ -199,34 +203,38 @@ async def mal(ctx):
         print("mal: appropriate tier found, no other tiers found")
 
     #conn = dbconnect()
-    with conn:
-        if xp != xp_old:
-            updateuser(conn, (username, xp, level, int(ctx.message.author.id)))
-            print("mal: Updated user "+username+" "+ctx.message.author.id)
-        print("mal: Updating stats")
-        stats = selectstats(conn, int(ctx.message.author.id))
-        if not stats:
-            insertstats(conn, (int(ctx.message.author.id), days_number, completed_number, meanscore_number))
-            print("mal: Stats inserted")
-        else:
-            updatestats(conn, (days_number, completed_number, meanscore_number, int(ctx.message.author.id)))
-            print("mal: Stats updated")
+    with (await lock):
+        with conn:
+            if xp != xp_old:
+                updateuser(conn, (username, xp, level, int(ctx.message.author.id)))
+                print("mal: Updated user "+username+" "+ctx.message.author.id)
+            print("mal: Updating stats")
+            stats = selectstats(conn, int(ctx.message.author.id))
+            if not stats:
+                insertstats(conn, (int(ctx.message.author.id), days_number, completed_number, meanscore_number))
+                print("mal: Stats inserted")
+            else:
+                updatestats(conn, (days_number, completed_number, meanscore_number, int(ctx.message.author.id)))
+                print("mal: Stats updated")
 
     await client.say("Konto MAL: "+username+ \
     "\nCompleted: "+completed+ \
     "\nDays: "+days+ \
     "\nMean score: "+meanscore+ \
     "\nLevel: "+str(level)+ \
-    "\nXP: "+str(xp))
+    "\nXP: "+str(xp)+ \
+    "\nDo następnego poziomu pozostało: "+str(maxxp-xp)+" XP")
 
 
-@client.command(description="Wyszukuje na MALu i zwraca pierwszy wynik - serię anime.")
-async def malfind(query : str):
+@client.command(description="Wyszukuje serię anime na MALu.")
+async def malfind(*, query : str):
 
-    results=BeautifulSoup(requests.get('https://myanimelist.net/api/anime/search.xml?q='+query, auth=('Wikt', 'PASSWORD')).text, 'xml')
+    output=BeautifulSoup(requests.get('https://myanimelist.net/api/anime/search.xml?q='+query, auth=('Wikt', 'PASSWORD')).text, 'xml')
     try:
-        top=results.find_all('entry')[0]
-    except IndexError:
+        results=output.find_all('entry')
+        scores = [SequenceMatcher(None, query, t.title.text).ratio() for t in results]
+        top = results[scores.index(max(scores))]
+    except ValueError:
         await client.say("Nic nie znaleziono.")
         return
 
@@ -249,10 +257,8 @@ async def malfind(query : str):
 
 @client.event
 async def on_ready():
-    print('init: Logged in as')
-    print(client.user.name)
-    print(client.user.id)
-    for i in discord.utils.get(client.servers, name='testMALmemes').roles:
+    print('init: Logged in as '+client.user.name)
+    for i in discord.utils.get(client.servers, name='Sasuga-san@Ganbaranai').roles:
         thisroles[i.name]=i
 
 client.run('token')
