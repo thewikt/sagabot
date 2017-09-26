@@ -35,3 +35,5 @@ Poziom wyliczany jest na podstawie ramek XP, które podane są w pliku `levels.c
 
 `!malfind <zapytanie>` - znajduje bajkę na MALu i podaje informacje o niej oraz link do wpisu na MALu. 
 
+`!smug` - Losuje smug dziewczynkę z api smugs.safe.moe. (10s cooldown)
+
