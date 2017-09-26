@@ -231,13 +231,17 @@ async def mal(ctx):
                 updatestats(conn, (days_number, completed_number, meanscore_number, int(ctx.message.author.id)))
                 print("mal: Stats updated")
 
-    await client.say("Konto MAL: "+username+ \
+    final_stats="Konto MAL: "+username+ \
     "\nCompleted: "+completed+ \
     "\nDays: "+days+ \
     "\nMean score: "+meanscore+ \
     "\nLevel: "+str(level)+ \
-    "\nXP: "+str(xp)+ \
-    "\nDo następnego poziomu pozostało: "+str(maxxp-xp)+" XP")
+    "\nXP: "+str(xp)
+
+    if xp == xp_old or not xp_old:
+        final_stats+="\nDo następnego poziomu pozostało: "+str(maxxp-xp)+" XP"
+
+    await client.say(final_stats)
 
 
 @client.command(description="Wyszukuje serię anime na MALu.")
