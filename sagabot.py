@@ -1,13 +1,15 @@
 #!/usr/bin/python3
 
 import discord
-import requests
+#import requests
 import asyncio
+import aiohttp
 from discord.ext import commands
 from bs4 import BeautifulSoup
 from scipy.stats import norm
 from sagabot_db import *
 from difflib import SequenceMatcher
+from io import BytesIO
 import re
 
 client = commands.Bot(command_prefix="!", description="Show me your power level!")
@@ -75,8 +77,9 @@ async def malcheck(username_in : str):
         if not user:
             #get it from MAL
             print("malcheck: User not in DB. Getting from MAL")
-            #TBD: update request to use aiohttp
-            soup=BeautifulSoup(requests.get("https://myanimelist.net/profile/"+username).text, 'html.parser')
+            async with aiohttp.get("https://myanimelist.net/profile/"+username) as r:
+                text=await r.text()
+            soup=BeautifulSoup(text, 'html.parser')
 
             try:
                 days=soup.select("div.di-tc.al")[0].text.split(' ')[1]
@@ -139,8 +142,9 @@ async def mal(ctx):
             if not xp_old: xp_old = 0
             if not level_old: level_old = 0
     #TBD: EXPORT THIS TO FUNCTION V
-    soup=BeautifulSoup(requests.get("https://myanimelist.net/profile/"+username).text, 'html.parser')
-
+    async with aiohttp.get("https://myanimelist.net/profile/"+username) as r:
+        text=await r.text()
+    soup=BeautifulSoup(text, 'html.parser')
     try:
         days=soup.select("div.di-tc.al")[0].text.split(' ')[1]
         completed=soup.select("a.circle.anime.completed")[0].next_sibling.text
@@ -228,10 +232,12 @@ async def mal(ctx):
 
 @client.command(description="Wyszukuje serię anime na MALu.")
 async def malfind(*, query : str):
-
-    output=BeautifulSoup(requests.get('https://myanimelist.net/api/anime/search.xml?q='+query, auth=('Wikt', 'PASSWORD')).text, 'xml')
+    auth=aiohttp.BasicAuth('Wikt', password='PASSWORD')
+    async with aiohttp.get('https://myanimelist.net/api/anime/search.xml?q='+query, auth=auth) as r:
+        text=await r.text()
+    soup=BeautifulSoup(text, 'xml')
     try:
-        results=output.find_all('entry')
+        results=soup.find_all('entry')
         scores = [SequenceMatcher(None, query, t.title.text).ratio() for t in results]
         top = results[scores.index(max(scores))]
     except ValueError:
@@ -254,6 +260,28 @@ async def malfind(*, query : str):
         '\n**End date: **'+end+ \
         '\nhttps://myanimelist.net/anime/'+id_+'/'
     await client.say(full)
+
+@client.command(description="Losuje smug dziewczynkę z api smugs.safe.moe. (10s cooldown)", pass_context=True)
+@commands.cooldown(1, 10.0)
+async def smug(ctx):
+    print("smug: getting a random smug pic")
+    async with aiohttp.get("https://smugs.safe.moe/api/v1/i/r") as r:
+        json_r=await r.json()
+    smug_pic="https://smugs.safe.moe/"+json_r['url']
+    targetchan=ctx.message.channel
+    print("smug: received response "+smug_pic+", posting to "+targetchan.name)
+
+    async with aiohttp.get(smug_pic) as r:
+        smug_img=BytesIO()
+        while True:
+            chunk=await r.content.read(1024)
+            if not chunk:
+                break
+            smug_img.write(chunk)
+        smug_img.seek(0)
+    print("smug: saved file to memory, uploading")
+
+    await client.send_file(targetchan, smug_img, filename="smug.jpg")
 
 @client.event
 async def on_ready():
