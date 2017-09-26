@@ -17,10 +17,11 @@ from sys import argv
 #oczekiwane parametry: token, mal_acct, mal_pwd, server
 
 config={}
-if argv[1]:
-    #inny konfig w argumencie, np. do testowania 
+try:
+    #inny konfig w argumencie, np. do testowania
     cfgfile=argv[1]
-else:
+except IndexError:
+    #default - produkcyjny
     cfgfile='config.txt'
 with open(cfgfile, 'r') as f:
     config_lines=f.readlines()
@@ -211,6 +212,7 @@ async def mal(ctx):
         await asyncio.sleep(1)
         await client.add_roles(ctx.message.author, targetrole)
         print("mal: removed "+str([i.name for i in otherroles])+", added "+targetrole.name)
+        await client.say(ctx.message.author.name+" jest teraz w tierze **"+tier+"**!")
     else:
         print("mal: appropriate tier found, no other tiers found")
 
