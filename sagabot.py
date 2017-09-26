@@ -1,7 +1,6 @@
 #!/usr/bin/python3
 
 import discord
-#import requests
 import asyncio
 import aiohttp
 from discord.ext import commands
@@ -11,6 +10,23 @@ from sagabot_db import *
 from difflib import SequenceMatcher
 from io import BytesIO
 import re
+from sys import argv
+
+#config
+#format: plik z wieloma linijkami, w każdej linijce jeden parametr "nazwa=wartość"
+#oczekiwane parametry: token, mal_acct, mal_pwd, server
+
+config={}
+if argv[1]:
+    #inny konfig w argumencie, np. do testowania 
+    cfgfile=argv[1]
+else:
+    cfgfile='config.txt'
+with open(cfgfile, 'r') as f:
+    config_lines=f.readlines()
+for line in config_lines:
+    kv=line.split("=")
+    config[kv[0]]=kv[1].strip()
 
 client = commands.Bot(command_prefix="!", description="Show me your power level!")
 thisroles={}
@@ -21,15 +37,10 @@ middle = norm(5, 2).pdf(5)
 factor=60./13.
 lock = asyncio.Lock()
 
-#@client.command()
-#async def help():
-#    await client.say('''
-#    Polecenia: \n
-#    **!malbind** <username> - wiąże z twoim Discordem podane konto na MAL. \n
-#    **!mal** - dla związanego z twoim Discordem konta wylicza powerlevel i nadaje rangę. \n
-#    **!malcheck** <username> - dla użytkownika pokazuje statystyki i powerlevel. Działa także dla niepowiązanych kont. \n
-#    **!malfind** <zapytanie> - wyszukuje na MALu i zwraca pierwszy wynik - serię anime. \n
-#    ''')
+async def calculateXP(days_number, completed_number, meanscore_number):
+        score_factor = norm(5, 2).pdf(meanscore_number) / middle
+        xp = int(round(days_number * completed_number * factor * score_factor, 0))
+        return xp
 
 @client.command(pass_context=True, description="Wiąże z twoim Discordem podane konto na MAL.")
 async def malbind(ctx, username_in : str):
@@ -93,9 +104,7 @@ async def malcheck(username_in : str):
             completed_number = float(completed.replace(',', ''))
             meanscore_number = float(meanscore)
 
-            score_factor = norm(5, 2).pdf(meanscore_number) / middle
-
-            xp = int(round(days_number * completed_number * factor * score_factor, 0))
+            xp = await calculateXP(days_number, completed_number, meanscore_number)
             level = (getlevel(conn, xp)[0][0])
 
             await client.say("Konto MAL: "+username+ \
@@ -157,9 +166,8 @@ async def mal(ctx):
     completed_number = float(completed.replace(',', ''))
     meanscore_number = float(meanscore)
 
-    score_factor = norm(5, 2).pdf(meanscore_number) / middle
+    xp = await calculateXP(days_number, completed_number, meanscore_number)
 
-    xp = int(round(days_number * completed_number * factor * score_factor, 0))
     with conn:
         lvrow = getlevel(conn, xp)
         level = lvrow[0][0]
@@ -232,7 +240,7 @@ async def mal(ctx):
 
 @client.command(description="Wyszukuje serię anime na MALu.")
 async def malfind(*, query : str):
-    auth=aiohttp.BasicAuth('Wikt', password='PASSWORD')
+    auth=aiohttp.BasicAuth(config['mal_acct'], password=config['mal_pwd'])
     async with aiohttp.get('https://myanimelist.net/api/anime/search.xml?q='+query, auth=auth) as r:
         text=await r.text()
     soup=BeautifulSoup(text, 'xml')
@@ -286,7 +294,7 @@ async def smug(ctx):
 @client.event
 async def on_ready():
     print('init: Logged in as '+client.user.name)
-    for i in discord.utils.get(client.servers, name='Sasuga-san@Ganbaranai').roles:
+    for i in discord.utils.get(client.servers, name=config['server']).roles:
         thisroles[i.name]=i
 
-client.run('token')
+client.run(config['token'])
