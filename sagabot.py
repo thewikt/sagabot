@@ -34,12 +34,12 @@ thisroles={}
 tiers = dict(zip([(i*5, i*5+4) for i in range(22)], '[E-],[E],[E+],[D-],[D],[D+],[C-],[C],[C+],[B-],[B],[B+],[A-],[A],[A+],[S-],[S],[S+],[SS-],[SS],[SS+],[SSS]'.split(',')))
 tiers[(110, 114)]='EX'
 #variables for !mal
-middle = norm(5, 2).pdf(5)
+middle = norm(5.5, 3.5).pdf(5.5)
 factor=60./13.
 lock = asyncio.Lock()
 
 async def calculateXP(days_number, completed_number, meanscore_number):
-        score_factor = norm(5, 2).pdf(meanscore_number) / middle
+        score_factor = norm(5.5, 3.5).pdf(meanscore_number) / middle
         xp = int(round(days_number * completed_number * factor * score_factor, 0))
         return xp
 
@@ -275,13 +275,13 @@ async def malfind(*, query : str):
         '\nhttps://myanimelist.net/anime/'+id_+'/'
     await client.say(full)
 
-@client.command(description="Losuje smug dziewczynkę z api smugs.safe.moe. (10s cooldown)", pass_context=True)
+@client.command(description="Losuje smug dziewczynkę z API smug.kancolle.pl. (10s cooldown)", pass_context=True)
 @commands.cooldown(1, 10.0)
 async def smug(ctx):
     print("smug: getting a random smug pic")
-    async with aiohttp.get("https://smugs.safe.moe/api/v1/i/r") as r:
+    async with aiohttp.get("https://smug.kancolle.pl/smug/random") as r:
         json_r=await r.json()
-    smug_pic="https://smugs.safe.moe/"+json_r['url']
+    smug_pic=json_r['url']
     targetchan=ctx.message.channel
     print("smug: received response "+smug_pic+", posting to "+targetchan.name)
 
@@ -295,7 +295,34 @@ async def smug(ctx):
         smug_img.seek(0)
     print("smug: saved file to memory, uploading")
 
-    await client.send_file(targetchan, smug_img, filename="smug.jpg")
+    await client.send_file(targetchan, smug_img, filename=smug_pic.split('/')[-1])
+
+@client.command(description="Dodaje smug do API smug.kancolle.pl.", pass_context=True)
+async def smugadd(ctx):
+    fromText=False
+    try:
+        attachment=ctx.message.attachments[0]['url']
+    except (IndexError, KeyError):
+        if len(ctx.message.content.split(' ')) > 1:
+            attachment=ctx.message.content.split(' ')[1]
+            fromText=True
+        else:
+            print("smugadd: nic nie zostało załączone")
+            await client.say(ctx.message.author.name+": nie znaleziono załącznika ani linka.")
+            return
+
+    print("smugadd: sending "+attachment+" to the API")
+    async with aiohttp.post("https://smug.kancolle.pl/smug/add/", data={'url':attachment, 'source':str(ctx.message.author)}, headers={'Authorization':'Token '+config['smugtoken']}) as r:
+        if r.status == 200:
+            print("smugadd: success")
+            await client.say(ctx.message.author.name+": Dodano obrazek do zbioru smug.")
+        else:
+            print("smugadd: failure, response: "+str(r.status))
+            print(await r.text())
+            if fromText:
+                await client.say(ctx.message.author.name+": Dodanie obrazka się nie powiodło. Czy link jest prawidłowy?")
+            else:
+                await client.say(ctx.message.author.name+": Dodanie obrazka się nie powiodło.")
 
 @client.event
 async def on_ready():

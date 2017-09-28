@@ -17,10 +17,10 @@ xp = int(round(days_number * completed_number * factor * score_factor, 0))
 ```
 gdzie `factor` to `60/13`, a `score_factor` to kara za odchylenie od średniej ocen:
 ```
-middle = norm(5, 2).pdf(5) # prawdopodobieństwo wylosowania 5 z rozkładu normalnego o średniej 5 i wariancji 2
-score_factor = norm(5, 2).pdf(meanscore_number) / middle # j.w, ale wylosowania średniej ocen z profilu 
+middle = norm(5.5, 3.5).pdf(5.5) # prawdopodobieństwo wylosowania 5 z rozkładu normalnego o średniej 5 i wariancji 2
+score_factor = norm(5.5, 3.5).pdf(meanscore_number) / middle # j.w, ale wylosowania średniej ocen z profilu 
 ```
-W przypadku, gdy średnia ocen z profilu to 5, ten czynnik wynosi 1 - w przeciwnym razie maleje. 
+W przypadku, gdy średnia ocen z profilu to 5.5, ten czynnik wynosi 1 - w przeciwnym razie maleje. 
 Po przemnożeniu wszystkiego XP jest zaokrąglone do pełnej liczby, a typ zmiennej zostaje zmieniony na liczbę całkowitą (żeby nie było zbędnego rozwinięcia dziesiętnego przy podawaniu liczby przez bota). 
 
 Poziom wyliczany jest na podstawie ramek XP, które podane są w pliku `levels.csv` wewnątrz tego repozytorium. 
@@ -35,5 +35,7 @@ Poziom wyliczany jest na podstawie ramek XP, które podane są w pliku `levels.c
 
 `!malfind <zapytanie>` - znajduje bajkę na MALu i podaje informacje o niej oraz link do wpisu na MALu. 
 
-`!smug` - Losuje smug dziewczynkę z api smugs.safe.moe. (10s cooldown)
+`!smug` - Losuje smug dziewczynkę z api smug.kancolle.pl. (10s cooldown)
+
+`!smugadd` - Dodaje smug dziewczynkę do api smug.kancolle.pl. Obrazek pobierany jest z załącznika, a w przypadku braku załącznika - z linka podanego po poleceniu. 
 
