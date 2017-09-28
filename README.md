@@ -17,7 +17,7 @@ xp = int(round(days_number * completed_number * factor * score_factor, 0))
 ```
 gdzie `factor` to `60/13`, a `score_factor` to kara za odchylenie od średniej ocen:
 ```
-middle = norm(5.5, 3.5).pdf(5.5) # prawdopodobieństwo wylosowania 5 z rozkładu normalnego o średniej 5 i wariancji 2
+middle = norm(5.5, 3.5).pdf(5.5) # prawdopodobieństwo wylosowania 5 z rozkładu normalnego o średniej 5.5 i wariancji 3.5
 score_factor = norm(5.5, 3.5).pdf(meanscore_number) / middle # j.w, ale wylosowania średniej ocen z profilu 
 ```
 W przypadku, gdy średnia ocen z profilu to 5.5, ten czynnik wynosi 1 - w przeciwnym razie maleje. 
