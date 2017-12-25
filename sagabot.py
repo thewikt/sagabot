@@ -97,8 +97,10 @@ async def malcheck(username_in : str):
                 days=soup.select("div.di-tc.al")[0].text.split(' ')[1]
                 completed=soup.select("a.circle.anime.completed")[0].next_sibling.text
                 meanscore=soup.select("span.fn-grey2.fw-n")[1].parent.text.split(' ')[2]
-            except IndexError:
+            except IndexError as e:
                 await client.say("Nie można pobrać danych z profilu. Czy na pewno dobrze podałeś nazwę?")
+                print(text)
+                print(str(e))
                 return
 
             days_number= float(days)
