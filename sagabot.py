@@ -38,6 +38,10 @@ middle = norm(5.5, 3.5).pdf(5.5)
 factor=60./13.
 lock = asyncio.Lock()
 
+async def fetch(session, url):
+    async with session.get(url) as r:
+        return await r.text()
+
 async def calculateXP(days_number, completed_number, meanscore_number):
         score_factor = norm(5.5, 3.5).pdf(meanscore_number) / middle
         xp = int(round(days_number * completed_number * factor * score_factor, 0))
@@ -48,39 +52,39 @@ async def malbind(ctx, username_in : str):
     username = username_in.lower()
     if not re.match("^[a-z0-9_-]*$", username):
         print("mal: Malformed MAL username")
-        await client.say("Nieprawidłowy format nazwy profilu.")
+        await ctx.send("Nieprawidłowy format nazwy profilu.")
         return
 
     conn = dbconnect()
     #print(ctx.message.author.id+" "+str(type(ctx.message.author.id)))
     with conn:
-        user_row = selectuser(conn, int(ctx.message.author.id))
+        user_row = selectuser(conn, ctx.message.author.id)
         check = selectbyname(conn, username)
         if check:
             print("malbind: username "+username+" already exists")
-            if check[0][0] == int(ctx.message.author.id):
-                await client.say("Już zbindowałeś to konto.")
+            if check[0][0] == ctx.message.author.id:
+                await ctx.send("Już zbindowałeś to konto.")
             else:
-                await client.say("Ktoś już zbindował konto "+username_in+".")
+                await ctx.send("Ktoś już zbindował konto "+username_in+".")
             return
         if not user_row:
-            print("malbind: Inserting "+username+" for "+ctx.message.author.id)
-            print(insertuser(conn, (int(ctx.message.author.id), username, "", "")))
-            await client.say(ctx.message.author.name+": przypisano Ci konto MAL "+username_in)
+            print("malbind: Inserting "+username+" for "+str(ctx.message.author.id))
+            print(insertuser(conn, (ctx.message.author.id, username, "", "")))
+            await ctx.send(ctx.message.author.name+": przypisano Ci konto MAL "+username_in)
         elif user_row[0][1] != username:
-            print("malbind: Updating "+ctx.message.author.id+" to "+username)
-            print(updateuser(conn, (username, user_row[0][2], user_row[0][3], int(ctx.message.author.id))))
-            await client.say(ctx.message.author.name+": zmieniono Ci konto MAL na "+username_in)
+            print("malbind: Updating "+str(ctx.message.author.id)+" to "+username)
+            print(updateuser(conn, (username, user_row[0][2], user_row[0][3], ctx.message.author.id)))
+            await ctx.send(ctx.message.author.name+": zmieniono Ci konto MAL na "+username_in)
         else:
-            print("malbind: Row for ID "+ctx.message.author.id+" already exists!")
-            await client.say("Już jest przypisane konto")
+            print("malbind: Row for ID "+str(ctx.message.author.id)+" already exists!")
+            await ctx.send("Już jest przypisane konto")
 
 @client.command(description = "Dla użytkownika pokazuje statystyki i powerlevel. Działa także dla niepowiązanych kont.")
-async def malcheck(username_in : str):
+async def malcheck(ctx, username_in : str):
     username=username_in.lower()
     if not re.match("^[a-z0-9_-]*$", username):
         print("malcheck: Malformed MAL username: "+username_in)
-        await client.say("Nieprawidłowy format nazwy profilu.")
+        await ctx.send("Nieprawidłowy format nazwy profilu.")
         return
     conn = dbconnect()
     with conn:
@@ -89,8 +93,8 @@ async def malcheck(username_in : str):
         if not user:
             #get it from MAL
             print("malcheck: User not in DB. Getting from MAL")
-            async with aiohttp.get("https://myanimelist.net/profile/"+username) as r:
-                text=await r.text()
+            async with aiohttp.ClientSession() as session:
+                text=await fetch(session, "https://myanimelist.net/profile/"+username)
             soup=BeautifulSoup(text, 'html.parser')
 
             try:
@@ -98,7 +102,7 @@ async def malcheck(username_in : str):
                 completed=soup.select("a.circle.anime.completed")[0].next_sibling.text
                 meanscore=soup.select("span.fn-grey2.fw-n")[1].parent.text.split(' ')[2]
             except IndexError as e:
-                await client.say("Nie można pobrać danych z profilu. Czy na pewno dobrze podałeś nazwę?")
+                await ctx.send("Nie można pobrać danych z profilu. Czy na pewno dobrze podałeś nazwę?")
                 print(text)
                 print(str(e))
                 return
@@ -110,7 +114,7 @@ async def malcheck(username_in : str):
             xp = await calculateXP(days_number, completed_number, meanscore_number)
             level = (getlevel(conn, xp)[0][0])
 
-            await client.say("Konto MAL: "+username+ \
+            await ctx.send("Konto MAL: "+username+ \
             "\nCompleted: "+completed+ \
             "\nDays: "+days+ \
             "\nMean score: "+meanscore+ \
@@ -124,9 +128,9 @@ async def malcheck(username_in : str):
                 username, xp, level, days, completed, meanscore = stats[0][1:]
             except IndexError:
                 print("malcheck: Failed to retrieve stats for ID "+str(id_))
-                await client.say("Profil MAL jest w bazie, ale nie ma statystyk. Właściciel powinien użyć polecenia !mal.")
+                await ctx.send("Profil MAL jest w bazie, ale nie ma statystyk. Właściciel powinien użyć polecenia !mal.")
                 return
-            await client.say("Konto MAL: "+username+ \
+            await ctx.send("Konto MAL: "+username+ \
             "\nCompleted: "+str(completed)+ \
             "\nDays: "+str(days)+ \
             "\nMean score: "+str(meanscore)+ \
@@ -134,17 +138,17 @@ async def malcheck(username_in : str):
             "\nXP: "+str(xp))
 
 
-@client.command(pass_context=True, description="Dla związanego z twoim Discordem konta wylicza powerlevel i nadaje rangę.")
+@client.command(description="Dla związanego z twoim Discordem konta wylicza powerlevel i nadaje rangę.")
 async def mal(ctx):
     conn = dbconnect()
 
     with conn:
-        print("mal: Selecting ID "+ctx.message.author.id)
+        print("mal: Selecting ID "+str(ctx.message.author.id))
         with (await lock):
-            user = selectuser(conn, int(ctx.message.author.id))
+            user = selectuser(conn, ctx.message.author.id)
         if not user:
-            print("mal: ID "+ctx.message.author.id+" not bound")
-            await client.say("Nie masz zbindowanego konta. Użyj !malbind username")
+            print("mal: ID "+str(ctx.message.author.id)+" not bound")
+            await ctx.send("Nie masz zbindowanego konta. Użyj !malbind username")
             return
         else:
             username = user[0][1]
@@ -154,15 +158,15 @@ async def mal(ctx):
             if not xp_old: xp_old = 0
             if not level_old: level_old = 0
     #TBD: EXPORT THIS TO FUNCTION V
-    async with aiohttp.get("https://myanimelist.net/profile/"+username) as r:
-        text=await r.text()
+    async with aiohttp.ClientSession() as session:
+        text = await fetch(session, "https://myanimelist.net/profile/"+username)
     soup=BeautifulSoup(text, 'html.parser')
     try:
         days=soup.select("div.di-tc.al")[0].text.split(' ')[1]
         completed=soup.select("a.circle.anime.completed")[0].next_sibling.text
         meanscore=soup.select("span.fn-grey2.fw-n")[1].parent.text.split(' ')[2]
     except IndexError as e:
-        await client.say("Nie można pobrać danych z profilu. Czy na pewno dobrze podałeś nazwę?")
+        await ctx.send("Nie można pobrać danych z profilu. Czy na pewno dobrze podałeś nazwę?")
         print(text)
         print(str(e))
         return
@@ -186,19 +190,19 @@ async def mal(ctx):
         increase = xp - xp_old
         remaining = maxxp - xp
         print("mal: "+ctx.message.author.name+" gained "+str(increase)+" XP, "+str(remaining)+" left to next level")
-        await client.say(ctx.message.author.name+" zyskał "+str(increase)+" XP, pozostało "+str(remaining)+" do następnego poziomu")
+        await ctx.send(ctx.message.author.name+" zyskał "+str(increase)+" XP, pozostało "+str(remaining)+" do następnego poziomu")
     else:
         decrease = xp_old - xp
         remaining = maxxp - xp
         print("mal: "+ctx.message.author.name+" lost "+str(decrease)+" XP, "+str(remaining)+" left to next level")
-        await client.say(ctx.message.author.name+" stracił "+str(decrease)+" XP, pozostało "+str(remaining)+" do następnego poziomu")
+        await ctx.send(ctx.message.author.name+" stracił "+str(decrease)+" XP, pozostało "+str(remaining)+" do następnego poziomu")
 
     if level > level_old:
         print("mal: "+ctx.message.author.name+" leveled up!")
-        await client.say("**Level up!** "+ctx.message.author.name+" ma teraz level "+str(level))
+        await ctx.send("**Level up!** "+ctx.message.author.name+" ma teraz level "+str(level))
     elif level < level_old:
         print("mal: "+ctx.message.author.name+" leveled down.")
-        await client.say("Level down. "+ctx.message.author.name+" ma teraz level "+str(level))
+        await ctx.send("Level down. "+ctx.message.author.name+" ma teraz level "+str(level))
 
 
     if level > 110:
@@ -216,7 +220,7 @@ async def mal(ctx):
         await asyncio.sleep(1)
         await client.add_roles(ctx.message.author, targetrole)
         print("mal: removed "+str([i.name for i in otherroles])+", added "+targetrole.name)
-        await client.say(ctx.message.author.name+" jest teraz w tierze **"+tier+"**!")
+        await ctx.send(ctx.message.author.name+" jest teraz w tierze **"+tier+"**!")
     else:
         print("mal: appropriate tier found, no other tiers found")
 
@@ -224,15 +228,15 @@ async def mal(ctx):
     with (await lock):
         with conn:
             if xp != xp_old:
-                updateuser(conn, (username, xp, level, int(ctx.message.author.id)))
-                print("mal: Updated user "+username+" "+ctx.message.author.id)
+                updateuser(conn, (username, xp, level, ctx.message.author.id))
+                print("mal: Updated user "+username+" "+str(ctx.message.author.id))
             print("mal: Updating stats")
-            stats = selectstats(conn, int(ctx.message.author.id))
+            stats = selectstats(conn, ctx.message.author.id)
             if not stats:
-                insertstats(conn, (int(ctx.message.author.id), days_number, completed_number, meanscore_number))
+                insertstats(conn, (ctx.message.author.id, days_number, completed_number, meanscore_number))
                 print("mal: Stats inserted")
             else:
-                updatestats(conn, (days_number, completed_number, meanscore_number, int(ctx.message.author.id)))
+                updatestats(conn, (days_number, completed_number, meanscore_number, ctx.message.author.id))
                 print("mal: Stats updated")
 
     final_stats="Konto MAL: "+username+ \
@@ -245,39 +249,40 @@ async def mal(ctx):
     if xp == xp_old or not xp_old:
         final_stats+="\nDo następnego poziomu pozostało: "+str(maxxp-xp)+" XP"
 
-    await client.say(final_stats)
+    await ctx.send(final_stats)
 
-
-@client.command(description="Wyszukuje serię anime na MALu.")
-async def malfind(*, query : str):
-    auth=aiohttp.BasicAuth(config['mal_acct'], password=config['mal_pwd'])
-    async with aiohttp.get('https://myanimelist.net/api/anime/search.xml?q='+query, auth=auth) as r:
-        text=await r.text()
-    soup=BeautifulSoup(text, 'xml')
-    try:
-        results=soup.find_all('entry')
-        scores = [SequenceMatcher(None, query, t.title.text).ratio() for t in results]
-        top = results[scores.index(max(scores))]
-    except ValueError:
-        await client.say("Nic nie znaleziono.")
-        return
-
-    title = top.title.text
-    episodes = top.episodes.text
-    score = top.score.text
-    type_ = top.find('type').text
-    start = top.start_date.text
-    end = top.end_date.text
-    id_ = top.id.text
-
-    full = '**Title: **'+title+ \
-        '\n**Episodes: **'+episodes+ \
-        '\n**Score: **'+score+ \
-        '\n**Type: **'+type_+ \
-        '\n**Start date: **'+start+ \
-        '\n**End date: **'+end+ \
-        '\nhttps://myanimelist.net/anime/'+id_+'/'
-    await client.say(full)
+# Polecenie zakomentowane - stare API najwyraźniej niedostępne. 
+# Może wymagać adaptacji do Jikan. 
+#@client.command(description="Wyszukuje serię anime na MALu.")
+#async def malfind(ctx, query : str):
+#    auth=aiohttp.BasicAuth(config['mal_acct'], password=config['mal_pwd'])
+#    async with aiohttp.ClientSession(auth=auth) as session:
+#        text = await fetch(session, 'https://myanimelist.net/api/anime/search.xml?q='+query)
+#    soup=BeautifulSoup(text, 'xml')
+#    try:
+#        results=soup.find_all('entry')
+#        scores = [SequenceMatcher(None, query, t.title.text).ratio() for t in results]
+#        top = results[scores.index(max(scores))]
+#    except ValueError:
+#        await ctx.send("Nic nie znaleziono.")
+#        return
+#
+#    title = top.title.text
+#    episodes = top.episodes.text
+#    score = top.score.text
+#    type_ = top.find('type').text
+#    start = top.start_date.text
+#    end = top.end_date.text
+#    id_ = top.id.text
+#
+#    full = '**Title: **'+title+ \
+#        '\n**Episodes: **'+episodes+ \
+#        '\n**Score: **'+score+ \
+#        '\n**Type: **'+type_+ \
+#        '\n**Start date: **'+start+ \
+#        '\n**End date: **'+end+ \
+#        '\nhttps://myanimelist.net/anime/'+id_+'/'
+#    await ctx.send(full)
 
 @client.command(description="Losuje smug dziewczynkę z API smug.kancolle.pl. (10s cooldown)", pass_context=True)
 @commands.cooldown(1, 10.0)
@@ -312,26 +317,26 @@ async def smugadd(ctx):
             fromText=True
         else:
             print("smugadd: nic nie zostało załączone")
-            await client.say(ctx.message.author.name+": nie znaleziono załącznika ani linka.")
+            await ctx.send(ctx.message.author.name+": nie znaleziono załącznika ani linka.")
             return
 
     print("smugadd: sending "+attachment+" to the API")
     async with aiohttp.post("https://smug.kancolle.pl/smug/add/", data={'url':attachment, 'source':str(ctx.message.author)}, headers={'Authorization':'Token '+config['smugtoken']}) as r:
         if r.status == 200:
             print("smugadd: success")
-            await client.say(ctx.message.author.name+": Dodano obrazek do zbioru smug.")
+            await ctx.send(ctx.message.author.name+": Dodano obrazek do zbioru smug.")
         else:
             print("smugadd: failure, response: "+str(r.status))
             print(await r.text())
             if fromText:
-                await client.say(ctx.message.author.name+": Dodanie obrazka się nie powiodło. Czy link jest prawidłowy?")
+                await ctx.send(ctx.message.author.name+": Dodanie obrazka się nie powiodło. Czy link jest prawidłowy?")
             else:
-                await client.say(ctx.message.author.name+": Dodanie obrazka się nie powiodło.")
+                await ctx.send(ctx.message.author.name+": Dodanie obrazka się nie powiodło.")
 
 @client.event
 async def on_ready():
     print('init: Logged in as '+client.user.name)
-    for i in discord.utils.get(client.servers, name=config['server']).roles:
+    for i in discord.utils.get(client.guilds, name=config['server']).roles:
         thisroles[i.name]=i
 
 client.run(config['token'])
